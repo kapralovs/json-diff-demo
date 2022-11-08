@@ -26,9 +26,10 @@ type Event struct {
 
 func main() {
 	user1 := &User{
-		ID:     1,
-		Name:   "Serj",
-		Weight: 80.1,
+		ID:      1,
+		Name:    "Some person",
+		Weight:  80.1,
+		IsAdult: true,
 		Items: []string{
 			"pencil",
 			"sandwitch",
@@ -38,15 +39,13 @@ func main() {
 	}
 	user2 := &User{
 		ID:      1,
-		Name:    "Serj",
-		Weight:  85.9,
+		Name:    "Some person",
+		Weight:  80.1,
 		IsAdult: true,
 		Items: []string{
-			"pen",
-			"smartphone",
-			"drink",
-			"backpack",
-			"eraser",
+			"pencil",
+			"sandwitch",
+			"money",
 		},
 	}
 
@@ -74,16 +73,21 @@ func main() {
 		pathParts := strings.Split(op.Path.String()[1:], "/")
 		switch op.Type {
 		case "test":
+			fmt.Printf("BEFORE REMOVE: old: %v\n", before)
+			fmt.Printf("BEFORE REMOVE: new: %v\n", after)
 			testTypeCase(pathParts, op, before, after)
+			fmt.Printf("AFTER TEST: old: %v\n", before)
+			fmt.Printf("AFTER TEST: new: %v\n", after)
 			if patch[idx+1].Type == "remove" {
-				nextPathParts := strings.Split(patch[idx+1].String()[1:], "/")
-				removeTypeCase(nextPathParts, patch[idx+1], after)
+				nextPathParts := strings.Split(patch[idx+1].Path.String()[1:], "/")
+				removeTypeCase(pathParts, nextPathParts, after)
+				fmt.Printf("AFTER REMOVE: old: %v\n", before)
+				fmt.Printf("AFTER REMOVE: new: %v\n", after)
 				continue
 			}
 			if patch[idx+1].Type == "replace" {
 				nextPathParts := strings.Split(patch[idx+1].Path.String()[1:], "/")
 				replaceTypeCase(op.Value, nextPathParts, patch[idx+1], before, after)
-
 				continue
 			}
 			after[patch[idx+1].Path.String()[1:]] = patch[idx+1].Value
@@ -92,9 +96,24 @@ func main() {
 		}
 	}
 
+	fmt.Println(string(u1Serialized))
+	fmt.Println(string(u2Serialized))
 	fmt.Println(patch.String())
 	fmt.Println(before)
 	fmt.Println(after)
+
+	e := &Event{
+		Initiator: user1.Name,
+		Subject:   user1.Name,
+		Action:    "update_user",
+		OldData:   before,
+		NewData:   after,
+	}
+	evnt, err := json.Marshal(e)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(string(evnt))
 }
 
 func testTypeCase(pathParts []string, op jsondiff.Operation, before, after map[string]interface{}) {
@@ -120,18 +139,22 @@ func testTypeCase(pathParts []string, op jsondiff.Operation, before, after map[s
 	before[pathParts[0]] = op.Value
 }
 
-func removeTypeCase(pathParts []string, op jsondiff.Operation, after map[string]interface{}) {
+func removeTypeCase(pathParts, nextPathParts []string, after map[string]interface{}) {
 	if len(pathParts) > 1 {
 		if _, ok := after[pathParts[0]]; ok {
 			if values, ok := after[pathParts[0]].([]interface{}); ok {
-				for i := range values {
-					if values[i] == op.Value {
-						values[i] = nil
+				if len(values) > 0 {
+					for i := range values {
+						if pathParts[1] == nextPathParts[1] {
+							after[pathParts[0]] = values[:i]
+						}
+						return
 					}
 				}
 			}
 		}
 	}
+	fmt.Println("FAIL")
 	after[pathParts[0]] = nil
 }
 

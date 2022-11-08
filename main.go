@@ -73,16 +73,10 @@ func main() {
 		pathParts := strings.Split(op.Path.String()[1:], "/")
 		switch op.Type {
 		case "test":
-			fmt.Printf("BEFORE REMOVE: old: %v\n", before)
-			fmt.Printf("BEFORE REMOVE: new: %v\n", after)
 			testTypeCase(pathParts, op, before, after)
-			fmt.Printf("AFTER TEST: old: %v\n", before)
-			fmt.Printf("AFTER TEST: new: %v\n", after)
 			if patch[idx+1].Type == "remove" {
 				nextPathParts := strings.Split(patch[idx+1].Path.String()[1:], "/")
 				removeTypeCase(pathParts, nextPathParts, after)
-				fmt.Printf("AFTER REMOVE: old: %v\n", before)
-				fmt.Printf("AFTER REMOVE: new: %v\n", after)
 				continue
 			}
 			if patch[idx+1].Type == "replace" {
@@ -96,8 +90,6 @@ func main() {
 		}
 	}
 
-	fmt.Println(string(u1Serialized))
-	fmt.Println(string(u2Serialized))
 	fmt.Println(patch.String())
 	fmt.Println(before)
 	fmt.Println(after)
@@ -113,6 +105,9 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
+
+	fmt.Println(string(u1Serialized))
+	fmt.Println(string(u2Serialized))
 	fmt.Println(string(evnt))
 }
 

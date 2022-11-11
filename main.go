@@ -9,19 +9,32 @@ import (
 )
 
 type User struct {
-	ID      int      `json:"id"`
-	Name    string   `json:"name"`
-	Weight  float32  `json:"weight"`
-	IsAdult bool     `json:"is_adult"`
-	Items   []string `json:"items"`
+	ID      int      `json:"id,omitempty"`
+	Name    string   `json:"name,omitempty"`
+	Weight  float32  `json:"weight,omitempty"`
+	IsAdult bool     `json:"is_adult,omitempty"`
+	Items   []string `json:"items,omitempty"`
+	Vehicle []Car    `json:"vehicle,omitempty"`
+}
+
+type Car struct {
+	Vendor     string   `json:"vendor,omitempty"`
+	Model      string   `json:"model,omitempty"`
+	Additional []string `json:"additional,omitempty"`
 }
 
 type Event struct {
 	Initiator string      `json:"initiator,omitempty"`
 	Subject   string      `json:"subject,omitempty"`
 	Action    string      `json:"action,omitempty"`
-	OldData   interface{} `json:"old_data,omitempty"`
-	NewData   interface{} `json:"new_data,omitempty"`
+	Rollback  interface{} `json:"rollback,omitempty"`
+	Update    interface{} `json:"update,omitempty"`
+}
+
+type Diff struct {
+	Op    string      `json:"op,omitempty"`
+	Path  string      `json:"path,omitempty"`
+	Value interface{} `json:"value,omitempty"`
 }
 
 func main() {
@@ -29,12 +42,31 @@ func main() {
 		ID:      1,
 		Name:    "Some person",
 		Weight:  80.1,
-		IsAdult: true,
+		IsAdult: false,
 		Items: []string{
 			"pencil",
 			"sandwitch",
 			"money",
 			"smartphone",
+		},
+		Vehicle: []Car{
+			{
+				Vendor: "BMW",
+				Model:  "M5",
+				Additional: []string{
+					"airbag",
+					"music station",
+					"4WD",
+				},
+			},
+			{
+				Vendor: "VW",
+				Model:  "Polo",
+				Additional: []string{
+					"airbag",
+					"music station",
+				},
+			},
 		},
 	}
 	user2 := &User{
@@ -47,6 +79,22 @@ func main() {
 			"sandwitch",
 			"money",
 		},
+		Vehicle: []Car{
+			{
+				Vendor: "Skoda",
+				Model:  "Rapid",
+			},
+			{
+				Vendor: "Chevrolet",
+				Model:  "Tahoe",
+				Additional: []string{
+					"airbag",
+					"music station",
+					"offroad",
+					"4WD",
+				},
+			},
+		},
 	}
 
 	u1Serialized, err := json.Marshal(user1)
@@ -58,131 +106,129 @@ func main() {
 		fmt.Println(err)
 	}
 
-	before := make(map[string]interface{})
-	after := make(map[string]interface{})
-
-	patch, err := jsondiff.CompareJSONOpts(u1Serialized, u2Serialized, jsondiff.Invertible())
+	update, err := jsondiff.CompareJSONOpts(u1Serialized, u2Serialized, jsondiff.Invertible())
+	if err != nil {
+		fmt.Println(err)
+	}
+	rollback, err := jsondiff.CompareJSONOpts(u2Serialized, u1Serialized, jsondiff.Invertible())
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	for idx, op := range patch {
-		if op.Type == "replace" || op.Type == "remove" {
-			continue
+	rollbackPatch := makePatch(rollback)
+	updatePatch := makePatch(update)
+
+	fmt.Println(update.String())
+	fmt.Println()
+	fmt.Println(rollback.String())
+
+	// fmt.Println("ROLLBACK:")
+	// for _, v := range rollbackPatch {
+	// 	fmt.Printf("op: %v\n", v.Op)
+	// 	fmt.Printf("path: %v\n", v.Path)
+	// 	fmt.Printf("value: %v\n", v.Value)
+	// }
+	// fmt.Println("UPDATE:")
+	// for _, v := range updatePatch {
+	// 	fmt.Printf("op: %v\n", v.Op)
+	// 	fmt.Printf("path: %v\n", v.Path)
+	// 	fmt.Printf("value: %v\n", v.Value)
+	// }
+
+	rbSerialized, _ := json.Marshal(rollbackPatch)
+	udSerialized, _ := json.Marshal(updatePatch)
+	fmt.Printf("%v\n%v\n", string(rbSerialized), string(udSerialized))
+	// e := &Event{
+	// 	Initiator: user1.Name,
+	// 	Subject:   user1.Name,
+	// 	Action:    "update_user",
+	// 	Rollback:  rollbackPatch,
+	// 	Update:    updatePatch,
+	// }
+	// evnt, err := json.Marshal(e)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// }
+
+	// fmt.Println(string(evnt))
+}
+
+func removeCase(pathParts []string, currentOp, previousOp jsondiff.Operation, diffs []*Diff) []*Diff {
+	diff := &Diff{
+		Op:   currentOp.Type,
+		Path: pathParts[0],
+	}
+
+	if len(pathParts) > 1 {
+		if diff.Value == nil {
+			diff.Value = []interface{}{previousOp.Value}
+			return append(diffs, diff)
 		}
+		if values, ok := diff.Value.([]interface{}); ok {
+			if len(values) > 0 {
+				diff.Value = append(values, previousOp.Value)
+				return append(diffs, diff)
+			}
+		}
+	}
+
+	diff.Value = previousOp.Value
+	return append(diffs, diff)
+}
+
+func addCase(pathParts []string, op jsondiff.Operation, diffs []*Diff) []*Diff {
+	diff := &Diff{
+		Op:   op.Type,
+		Path: pathParts[0],
+	}
+
+	if len(pathParts) > 1 {
+		if diff.Value == nil {
+			diff.Value = []interface{}{op.Value}
+			return append(diffs, diff)
+		}
+		if values, ok := diff.Value.([]interface{}); ok {
+			diff.Value = append(values, op.Value)
+			return append(diffs, diff)
+		}
+	}
+
+	diff.Value = op.Value
+	return append(diffs, diff)
+}
+
+func replaceCase(pathParts []string, op jsondiff.Operation, diffs []*Diff) []*Diff {
+	diff := &Diff{
+		Op:   op.Type,
+		Path: pathParts[0],
+	}
+	if len(pathParts) > 1 {
+		if diff.Value == nil {
+			diff.Value = []interface{}{op.Value}
+			return append(diffs, diff)
+		}
+		if values, ok := diff.Value.([]interface{}); ok {
+			diff.Value = append(values, op.Value)
+			return append(diffs, diff)
+		}
+	}
+	diff.Value = op.Value
+	return append(diffs, diff)
+}
+
+func makePatch(patch jsondiff.Patch) []*Diff {
+	diffs := []*Diff{}
+	for idx, op := range patch {
+		// fmt.Println(op.Type)
 		pathParts := strings.Split(op.Path.String()[1:], "/")
 		switch op.Type {
-		case "test":
-			testTypeCase(pathParts, op, before, after)
-			if patch[idx+1].Type == "remove" {
-				nextPathParts := strings.Split(patch[idx+1].Path.String()[1:], "/")
-				removeTypeCase(pathParts, nextPathParts, after)
-				continue
-			}
-			if patch[idx+1].Type == "replace" {
-				nextPathParts := strings.Split(patch[idx+1].Path.String()[1:], "/")
-				replaceTypeCase(op.Value, nextPathParts, patch[idx+1], before, after)
-				continue
-			}
-			after[patch[idx+1].Path.String()[1:]] = patch[idx+1].Value
 		case "add":
-			addTypeCase(idx, pathParts, op, after)
+			diffs = addCase(pathParts, op, diffs)
+		case "replace":
+			diffs = replaceCase(pathParts, op, diffs)
+		case "remove":
+			diffs = removeCase(pathParts, op, patch[idx-1], diffs)
 		}
 	}
-
-	fmt.Println(patch.String())
-	fmt.Println(before)
-	fmt.Println(after)
-
-	e := &Event{
-		Initiator: user1.Name,
-		Subject:   user1.Name,
-		Action:    "update_user",
-		OldData:   before,
-		NewData:   after,
-	}
-	evnt, err := json.Marshal(e)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	fmt.Println(string(u1Serialized))
-	fmt.Println(string(u2Serialized))
-	fmt.Println(string(evnt))
-}
-
-func testTypeCase(pathParts []string, op jsondiff.Operation, before, after map[string]interface{}) {
-	if len(pathParts) > 1 {
-		if _, ok := before[pathParts[0]]; !ok {
-			itemsBefore := []interface{}{op.Value}
-			itemsAfter := []interface{}{op.Value}
-			before[pathParts[0]] = itemsBefore
-			after[pathParts[0]] = itemsAfter
-			return
-		}
-		if values, ok := before[pathParts[0]].([]interface{}); ok {
-			values = append(values, op.Value)
-			before[pathParts[0]] = values
-		}
-		if values, ok := after[pathParts[0]].([]interface{}); ok {
-			values = append(values, op.Value)
-			after[pathParts[0]] = values
-		}
-		return
-	}
-
-	before[pathParts[0]] = op.Value
-}
-
-func removeTypeCase(pathParts, nextPathParts []string, after map[string]interface{}) {
-	if len(pathParts) > 1 {
-		if _, ok := after[pathParts[0]]; ok {
-			if values, ok := after[pathParts[0]].([]interface{}); ok {
-				if len(values) > 0 {
-					for i := range values {
-						if pathParts[1] == nextPathParts[1] {
-							after[pathParts[0]] = values[:i]
-						}
-						return
-					}
-				}
-			}
-		}
-	}
-	fmt.Println("FAIL")
-	after[pathParts[0]] = nil
-}
-
-func addTypeCase(idx int, pathParts []string, op jsondiff.Operation, after map[string]interface{}) {
-	if len(pathParts) > 1 {
-		if _, ok := after[pathParts[0]]; !ok {
-			after[pathParts[0]] = []interface{}{op.Value}
-		}
-		if values, ok := after[pathParts[0]].([]interface{}); ok {
-			values = append(values, op.Value)
-			after[pathParts[0]] = values
-		}
-		return
-	}
-	after[pathParts[0]] = op.Value
-}
-
-func replaceTypeCase(oldValue interface{}, pathParts []string, op jsondiff.Operation, before, after map[string]interface{}) {
-	if len(pathParts) > 1 {
-		if _, ok := after[pathParts[0]]; !ok {
-			after[pathParts[0]] = []interface{}{op.Value}
-			return
-		}
-		if values, ok := after[pathParts[0]].([]interface{}); ok {
-			for i := range values {
-				if values[i] == oldValue {
-					values[i] = op.Value
-					after[pathParts[0]] = values
-					return
-				}
-			}
-		}
-
-	}
-	after[pathParts[0]] = op.Value
+	return diffs
 }

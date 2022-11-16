@@ -61,10 +61,10 @@ func main() {
 
 	updated := applyPatch(u1Serialized, updatePatch)
 	rollbacked := applyPatch(updated, rollbackPatch)
+
 	fmt.Println(updatePatch.String())
 	fmt.Println()
 	fmt.Println(updatePatch.String())
-
 	fmt.Printf("Original document: %s\n", u1Serialized)
 	fmt.Printf("Original document2: %s\n", u2Serialized)
 	fmt.Printf("After Update: %s\n", updated)
@@ -73,6 +73,7 @@ func main() {
 
 func applyPatch(entity []byte, patch jsondiff.Patch) []byte {
 	patchSerialized, _ := json.Marshal(patch)
+	// fmt.Printf("PATCH DATA: %v\n", string(patchSerialized))
 	p, _ := jsonpatch.DecodePatch(patchSerialized)
 	patched, _ := p.Apply(entity)
 	return patched

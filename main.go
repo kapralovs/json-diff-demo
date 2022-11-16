@@ -11,7 +11,7 @@ import (
 type User struct {
 	Name     string   `json:"name,omitempty"`
 	Age      int      `json:"age,omitempty"`
-	IsAdult  bool     `json:"is_adult,omitempty"`
+	IsAdult  bool     `json:"is_adult"`
 	Bp       Backpack `json:"bp,omitempty"`
 	Items    []string `json:"items,omitempty"`
 	Vehicles []Car    `json:"vehicles,omitempty"`
@@ -38,7 +38,7 @@ func main() {
 		Items:    []string{"drink", "smartphone", "bubblegum"},
 		Vehicles: []Car{{Vendor: "VW", Model: "Polo"}},
 	}
-	u2 := &User{Name: "John", Age: 28, IsAdult: true,
+	u2 := &User{Name: "John", Age: 28, IsAdult: false,
 		Bp:    Backpack{Notebook: "Macbook", IsFull: true},
 		Items: []string{"smartphone", "bubblegum"},
 		Vehicles: []Car{
@@ -59,8 +59,8 @@ func main() {
 		panic(err)
 	}
 
-	updated := makePatch(u1Serialized, updatePatch)
-	rollbacked := makePatch(updated, rollbackPatch)
+	updated := applyPatch(u1Serialized, updatePatch)
+	rollbacked := applyPatch(updated, rollbackPatch)
 	fmt.Println(updatePatch.String())
 	fmt.Println()
 	fmt.Println(updatePatch.String())
@@ -71,9 +71,8 @@ func main() {
 	fmt.Printf("After Rollback: %s\n", rollbacked)
 }
 
-func makePatch(entity []byte, patch jsondiff.Patch) []byte {
+func applyPatch(entity []byte, patch jsondiff.Patch) []byte {
 	patchSerialized, _ := json.Marshal(patch)
-	// fmt.Printf("PATCH DATA: %v\n", string(patchSerialized))
 	p, _ := jsonpatch.DecodePatch(patchSerialized)
 	patched, _ := p.Apply(entity)
 	return patched
